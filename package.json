@@ -1,7 +1,7 @@
 {
   "name": "zod-redact",
   "version": "0.0.1",
-  "description": "Data masking plugin for Zod schemas — redact, anonymize, or replace sensitive fields after validation.",
+  "description": "Data masking plugin for Zod schemas - redact, anonymize, or replace sensitive fields after validation.",
   "author": "holoflash",
   "type": "module",
   "main": "./dist/index.cjs",

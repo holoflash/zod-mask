@@ -1,49 +1,76 @@
 import type * as z from "zod/v4";
-import { applyMask, applyMaskAsync, type MaskOptions } from "./apply.js";
-import { setMask, type MaskValue } from "./registry.js";
+import { applyRedact, applyRedactAsync, djb2, type RedactOptions } from "./apply.js";
+import { setRedact, type RedactValue } from "./registry.js";
 
-export function mask<S extends z.ZodType>(schema: S, value: MaskValue<z.output<S>>): S {
-  setMask(schema, value);
+export function redact<S extends z.ZodType>(schema: S, value: RedactValue<z.output<S>>): S {
+  setRedact(schema, value);
   return schema;
 }
 
-export function parseAndMask<T extends z.ZodType>(
+export function parseAndRedact<T extends z.ZodType>(
   schema: T,
   data: unknown,
-  options?: MaskOptions
+  options?: RedactOptions
 ): z.output<T> {
   const parsed = schema.parse(data);
-  return applyMask(schema, parsed, options, undefined, undefined, data);
+  return applyRedact(schema, parsed, options, undefined, undefined, data);
 }
 
-export function safeParseAndMask<T extends z.ZodType>(
+export function safeParseAndRedact<T extends z.ZodType>(
   schema: T,
   data: unknown,
-  options?: MaskOptions
+  options?: RedactOptions
 ): z.ZodSafeParseResult<z.output<T>> {
   const result = schema.safeParse(data);
   if (!result.success) return result;
-  return { success: true, data: applyMask(schema, result.data, options, undefined, undefined, data) };
+  return { success: true, data: applyRedact(schema, result.data, options, undefined, undefined, data) };
 }
 
-export async function parseAndMaskAsync<T extends z.ZodType>(
+export async function parseAndRedactAsync<T extends z.ZodType>(
   schema: T,
   data: unknown,
-  options?: MaskOptions
+  options?: RedactOptions
 ): Promise<z.output<T>> {
   const parsed = await schema.parseAsync(data);
-  return applyMaskAsync(schema, parsed, options, undefined, undefined, data);
+  return applyRedactAsync(schema, parsed, options, undefined, undefined, data);
 }
 
-export async function safeParseAndMaskAsync<T extends z.ZodType>(
+export async function safeParseAndRedactAsync<T extends z.ZodType>(
   schema: T,
   data: unknown,
-  options?: MaskOptions
+  options?: RedactOptions
 ): Promise<z.ZodSafeParseResult<z.output<T>>> {
   const result = await schema.safeParseAsync(data);
   if (!result.success) return result;
-  return { success: true, data: await applyMaskAsync(schema, result.data, options, undefined, undefined, data) };
+  return { success: true, data: await applyRedactAsync(schema, result.data, options, undefined, undefined, data) };
 }
 
-export { applyMask, applyMaskAsync, type MaskOptions } from "./apply.js";
-export { type MaskValue } from "./registry.js";
+/**
+ * Create a derived redaction function that picks values from multiple arrays
+ * (using the same DJB2 hash as the walker) and combines them via a template.
+ *
+ * The `fields` keys MUST match the schema field names they correlate with,
+ * so the hash picks stay in sync with the individual field replacements.
+ *
+ * ```ts
+ * const email = combine(
+ *   { firstName: firstNames, lastName: lastNames },
+ *   (first, last) => `${first}.${last}@example.com`,
+ * );
+ * ```
+ */
+export function combine(
+  fields: Record<string, string[]>,
+  template: (...values: string[]) => string,
+): (seed: string) => string {
+  const entries = Object.entries(fields);
+  return (seed: string) => {
+    const picked = entries.map(
+      ([key, arr]) => arr[djb2(seed + key) % arr.length],
+    );
+    return template(...picked);
+  };
+}
+
+export { applyRedact, applyRedactAsync, type RedactOptions } from "./apply.js";
+export { type RedactValue } from "./registry.js";

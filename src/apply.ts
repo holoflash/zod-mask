@@ -1,22 +1,22 @@
 import type * as z from "zod/v4";
-import { getMask, type MaskValue } from "./registry.js";
+import { getRedact } from "./registry.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-export interface MaskOptions {
-  /** Initial seed string for deterministic masking. Defaults to "". */
+export interface RedactOptions {
+  /** Initial seed string for deterministic redaction. Defaults to "". */
   seed?: string;
   /** Custom hash function. Must return a non-negative integer. Defaults to DJB2. */
   hash?: (str: string) => number;
 }
 
 // ---------------------------------------------------------------------------
-// DJB2 hash — frozen; exact picks from array masks are pinned in tests.
+// DJB2 hash — frozen; exact picks from array replacements are pinned in tests.
 // ---------------------------------------------------------------------------
 
-function djb2(str: string): number {
+export function djb2(str: string): number {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = (h * 33) ^ str.charCodeAt(i);
   return h >>> 0;
@@ -36,7 +36,7 @@ function resolveSeed(
     return String(id);
   let composite = "";
   for (const key in shape) {
-    if (getMask(shape[key]!) && typeof data[key] === "string") composite += data[key];
+    if (getRedact(shape[key]!) && typeof data[key] === "string") composite += data[key];
   }
   return composite || parentSeed;
 }
@@ -45,28 +45,28 @@ function resolveSeed(
 // Tree introspection helpers
 // ---------------------------------------------------------------------------
 
-function hasMaskInTree(schema: z.ZodType, seen: WeakSet<z.ZodType> = new WeakSet()): boolean {
+function hasRedactInTree(schema: z.ZodType, seen: WeakSet<z.ZodType> = new WeakSet()): boolean {
   if (seen.has(schema)) return false;
   seen.add(schema);
-  if (getMask(schema) !== undefined) return true;
+  if (getRedact(schema) !== undefined) return true;
   const def: any = (schema as any)._zod.def;
   switch (def.type) {
     case "object":
       for (const k in def.shape) {
-        if (hasMaskInTree(def.shape[k]!, seen)) return true;
+        if (hasRedactInTree(def.shape[k]!, seen)) return true;
       }
       return false;
     case "array":
-      return hasMaskInTree(def.element, seen);
+      return hasRedactInTree(def.element, seen);
     case "record":
-      return hasMaskInTree(def.valueType, seen);
+      return hasRedactInTree(def.valueType, seen);
     case "tuple":
-      if (def.items.some((item: z.ZodType) => hasMaskInTree(item, seen))) return true;
-      return def.rest ? hasMaskInTree(def.rest, seen) : false;
+      if (def.items.some((item: z.ZodType) => hasRedactInTree(item, seen))) return true;
+      return def.rest ? hasRedactInTree(def.rest, seen) : false;
     case "map":
-      return hasMaskInTree(def.valueType, seen);
+      return hasRedactInTree(def.valueType, seen);
     case "set":
-      return hasMaskInTree(def.valueType, seen);
+      return hasRedactInTree(def.valueType, seen);
     case "optional":
     case "nullable":
     case "default":
@@ -74,13 +74,13 @@ function hasMaskInTree(schema: z.ZodType, seen: WeakSet<z.ZodType> = new WeakSet
     case "catch":
     case "nonoptional":
     case "prefault":
-      return hasMaskInTree(def.innerType, seen);
+      return hasRedactInTree(def.innerType, seen);
     case "pipe":
-      return hasMaskInTree(def.in, seen) || hasMaskInTree(def.out, seen);
+      return hasRedactInTree(def.in, seen) || hasRedactInTree(def.out, seen);
     case "union":
-      return def.options.some((o: z.ZodType) => hasMaskInTree(o, seen));
+      return def.options.some((o: z.ZodType) => hasRedactInTree(o, seen));
     case "lazy":
-      return hasMaskInTree(def.getter(), seen);
+      return hasRedactInTree(def.getter(), seen);
     default:
       return false;
   }
@@ -109,13 +109,13 @@ function inputSchema(schema: z.ZodType): z.ZodType {
 }
 
 // ---------------------------------------------------------------------------
-// applyMask — post-parse tree walker
+// applyRedact — post-parse tree walker
 // ---------------------------------------------------------------------------
 
-export function applyMask<T>(
+export function applyRedact<T>(
   schema: z.ZodType,
   data: T,
-  options: MaskOptions = {},
+  options: RedactOptions = {},
   _seed?: string,
   _key?: string,
   _input?: unknown
@@ -137,12 +137,12 @@ function walk<T>(
 ): T {
   if (data == null) return data;
 
-  const mask = getMask(schema);
-  if (mask !== undefined) {
+  const replacement = getRedact(schema);
+  if (replacement !== undefined) {
     const s = seed || String(data);
-    if (typeof mask === "function") return (mask as (seed: string) => T)(s);
-    if (Array.isArray(mask)) return mask[hashFn(s + key) % mask.length] as T;
-    return mask as T;
+    if (typeof replacement === "function") return (replacement as (seed: string) => T)(s);
+    if (Array.isArray(replacement)) return replacement[hashFn(s + key) % replacement.length] as T;
+    return replacement as T;
   }
 
   const def: any = (schema as any)._zod.def;
@@ -219,7 +219,7 @@ function walk<T>(
     case "prefault":
       return walk(def.innerType, data, seed, key, inp, hashFn);
     case "pipe":
-      if (hasMaskInTree(def.out)) return walk(def.out, data, seed, key, data, hashFn);
+      if (hasRedactInTree(def.out)) return walk(def.out, data, seed, key, data, hashFn);
       return walk(def.in, data, seed, key, inp, hashFn);
     case "union": {
       for (const option of def.options as z.ZodType[]) {
@@ -237,13 +237,13 @@ function walk<T>(
 }
 
 // ---------------------------------------------------------------------------
-// applyMaskAsync
+// applyRedactAsync
 // ---------------------------------------------------------------------------
 
-export async function applyMaskAsync<T>(
+export async function applyRedactAsync<T>(
   schema: z.ZodType,
   data: T,
-  options: MaskOptions = {},
+  options: RedactOptions = {},
   _seed?: string,
   _key?: string,
   _input?: unknown
@@ -265,12 +265,12 @@ async function walkAsync<T>(
 ): Promise<T> {
   if (data == null) return data;
 
-  const mask = getMask(schema);
-  if (mask !== undefined) {
+  const replacement = getRedact(schema);
+  if (replacement !== undefined) {
     const s = seed || String(data);
-    if (typeof mask === "function") return (mask as (seed: string) => T)(s);
-    if (Array.isArray(mask)) return mask[hashFn(s + key) % mask.length] as T;
-    return mask as T;
+    if (typeof replacement === "function") return (replacement as (seed: string) => T)(s);
+    if (Array.isArray(replacement)) return replacement[hashFn(s + key) % replacement.length] as T;
+    return replacement as T;
   }
 
   const def: any = (schema as any)._zod.def;
@@ -351,7 +351,7 @@ async function walkAsync<T>(
     case "prefault":
       return walkAsync(def.innerType, data, seed, key, inp, hashFn);
     case "pipe":
-      if (hasMaskInTree(def.out)) return walkAsync(def.out, data, seed, key, data, hashFn);
+      if (hasRedactInTree(def.out)) return walkAsync(def.out, data, seed, key, data, hashFn);
       return walkAsync(def.in, data, seed, key, inp, hashFn);
     case "union": {
       for (const option of def.options as z.ZodType[]) {

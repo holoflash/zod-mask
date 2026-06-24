@@ -1,25 +1,25 @@
 import type * as z from "zod/v4";
 
 // ---------------------------------------------------------------------------
-// Mask registry — a dedicated z.registry() to store per-field mask metadata.
+// Redact registry — a WeakMap to store per-field redaction metadata.
 // This follows the maintainer-recommended pattern: metadata lives in a
 // registry, not on _zod.bag or as a no-op check.
 // ---------------------------------------------------------------------------
 
-export type MaskValue<T = unknown> = T | T[] | ((seed: string) => T);
+export type RedactValue<T = unknown> = T | T[] | ((seed: string) => T);
 
-interface MaskMeta {
-  mask: MaskValue;
+interface RedactMeta {
+  redact: RedactValue;
 }
 
-const maskRegistry = new WeakMap<z.ZodType, MaskMeta>();
+const redactRegistry = new WeakMap<z.ZodType, RedactMeta>();
 
-/** Retrieve the mask metadata for a schema node, if any. */
-export function getMask(schema: z.ZodType): MaskValue | undefined {
-  return maskRegistry.get(schema)?.mask;
+/** Retrieve the redact metadata for a schema node, if any. */
+export function getRedact(schema: z.ZodType): RedactValue | undefined {
+  return redactRegistry.get(schema)?.redact;
 }
 
-/** Store mask metadata for a schema node. */
-export function setMask(schema: z.ZodType, value: MaskValue): void {
-  maskRegistry.set(schema, { mask: value });
+/** Store redact metadata for a schema node. */
+export function setRedact(schema: z.ZodType, value: RedactValue): void {
+  redactRegistry.set(schema, { redact: value });
 }

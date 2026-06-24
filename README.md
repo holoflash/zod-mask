@@ -1,6 +1,6 @@
 # zod-redact
 
-Post-validation data masking for [Zod](https://zod.dev) schemas. Annotate fields with replacement values, then parse-and-mask in one step.
+Post-validation data redaction for [Zod](https://zod.dev) schemas. Annotate fields with replacement values, then parse-and-redact in one step.
 
 ```
 npm install zod-redact zod
@@ -12,65 +12,88 @@ npm install zod-redact zod
 
 ```ts
 import * as z from "zod/v4";
-import { mask, parseAndMask } from "zod-redact";
+import { redact, parseAndRedact } from "zod-redact";
 
 const User = z.object({
   id: z.string(),
-  name: mask(z.string(), "***"),
-  email: mask(z.string(), ["a@example.com", "b@example.com"]),
-  ssn: mask(z.string(), (seed) => `XXX-XX-${seed.slice(-4)}`),
-  age: mask(z.number(), 0),
-  isAdmin: mask(z.boolean(), false),
+  name: redact(z.string(), "***"),
+  email: redact(z.string(), ["a@example.com", "b@example.com"]),
+  ssn: redact(z.string(), (seed) => `XXX-XX-${seed.slice(-4)}`),
+  age: redact(z.number(), 0),
+  isAdmin: redact(z.boolean(), false),
 });
 
-parseAndMask(User, rawData);
+parseAndRedact(User, rawData);
 // { id: "usr_1", name: "***", email: "a@example.com", ssn: "XXX-XX-sr_1", age: 0, isAdmin: false }
 ```
 
-`mask()` annotates a schema field — it doesn't change parsing behavior. Regular `schema.parse()` still returns real data. Masking only happens when you use the library's parse functions.
+`redact()` annotates a schema field — it doesn't change parsing behavior. Regular `schema.parse()` still returns real data. Redaction only happens when you use the library's parse functions.
 
 ## API
 
-### `mask(schema, replacement)`
+### `redact(schema, replacement)`
 
 Annotate a field. Returns the schema unchanged (for inline chaining).
 
 | Form | What happens |
 |------|-------------|
-| `mask(z.string(), "***")` | Static replacement |
-| `mask(z.string(), ["A", "B", "C"])` | Deterministic pick via DJB2 hash |
-| `mask(z.string(), (seed) => ...)` | Dynamic — receives a seed string |
+| `redact(z.string(), "***")` | Static replacement |
+| `redact(z.string(), ["A", "B", "C"])` | Deterministic pick via DJB2 hash |
+| `redact(z.string(), (seed) => ...)` | Dynamic — receives a seed string |
 
 Works with `z.string()`, `z.number()`, `z.boolean()`, and anything else.
 
-### Parse + mask
+### Parse + redact
 
 | Function | Description |
 |----------|-------------|
-| `parseAndMask(schema, data, opts?)` | Parse, then mask. Throws on invalid input. |
-| `safeParseAndMask(schema, data, opts?)` | Safe variant — returns `{ success, data/error }`. |
-| `parseAndMaskAsync(schema, data, opts?)` | Async — for schemas with async refinements. |
-| `safeParseAndMaskAsync(schema, data, opts?)` | Async safe variant. |
-| `applyMask(schema, data, opts?)` | Mask already-parsed data (skips parsing). |
+| `parseAndRedact(schema, data, opts?)` | Parse, then redact. Throws on invalid input. |
+| `safeParseAndRedact(schema, data, opts?)` | Safe variant — returns `{ success, data/error }`. |
+| `parseAndRedactAsync(schema, data, opts?)` | Async — for schemas with async refinements. |
+| `safeParseAndRedactAsync(schema, data, opts?)` | Async safe variant. |
+| `applyRedact(schema, data, opts?)` | Redact already-parsed data (skips parsing). |
+
+### `combine(fields, template)`
+
+Create a derived redaction function that picks from multiple arrays and combines them. Useful for generating realistic fake data like full names or emails from component arrays.
+
+```ts
+import { combine, redact } from "zod-redact";
+
+const fullName = combine(
+  { firstName: firstNames, lastName: lastNames },
+  (first, last) => `${first} ${last}`,
+);
+
+const email = combine(
+  { firstName: firstNames, lastName: lastNames },
+  (first, last) => `${first.toLowerCase()}.${last.toLowerCase()}@example.com`,
+);
+
+const schema = z.object({
+  name: redact(z.string(), fullName),
+  email: redact(z.string(), email),
+});
+```
 
 ### Options
 
 ```ts
 {
-  seed?: string;                    // Base seed for deterministic masking (default: "")
+  seed?: string;                    // Base seed for deterministic redaction (default: "")
   hash?: (str: string) => number;   // Custom hash fn (default: DJB2)
 }
 ```
 
 ## How seeds work
 
-Array and function masks need a seed to produce deterministic output. The seed is resolved per object:
+Array and function replacements need a seed to produce deterministic output. The seed is resolved per object:
 
 1. If the object has an `id` field → `String(id)` is used
-2. Otherwise → masked string field values are concatenated as a composite seed
+2. Otherwise → redacted string field values are concatenated as a composite seed
 3. Fallback → `options.seed` (or `""`)
 
-Same `id` = same masked output across runs.
+Same `id` = same redacted output across runs.
 
 ## Supported types
 
