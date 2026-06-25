@@ -4,6 +4,7 @@
   "description": "Data masking plugin for Zod schemas - redact, anonymize, or replace sensitive fields after validation.",
   "author": "holoflash",
   "type": "module",
+  "packageManager": "pnpm@11.9.0",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
