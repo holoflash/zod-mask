@@ -1,5 +1,7 @@
 # zod-redact
 
+[![bundle size](https://deno.bundlejs.com/badge?q=zod-redact)](https://bundlejs.com/?q=zod-redact)
+
 Post-validation data redaction for [Zod](https://zod.dev) schemas. Annotate fields with replacement values, then parse-and-redact in one step.
 
 ```
